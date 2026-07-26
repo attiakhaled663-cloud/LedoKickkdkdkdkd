@@ -316,7 +316,7 @@
         @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
         /* ═══ بطاقة البوت ═══ */
-        .bot-list { display:flex; flex-direction:column; gap:10px; height:430px; overflow-y:auto; padding:4px 2px; }
+        .bot-list { display:flex; flex-direction:column; gap:10px; overflow-y:auto; padding:4px 2px; }
         .bot-list::-webkit-scrollbar { width:4px; }
         .bot-list::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.2); border-radius:2px; }
         .bot-card {
@@ -1100,7 +1100,6 @@
                 <div class="app-name">LedoKick</div>
                 <div class="app-tagline">البوتات</div>
             </div>
-            <button class="btn btn-ghost btn-xs" id="btnOpenPiP" onclick="openPiPWindow()" title="نافذة عائمة (PIP)" style="flex-shrink:0"><i class="fas fa-clone"></i></button>
             <button class="btn btn-ghost btn-xs" onclick="openUnifiedSettings()" title="إعدادات موحدة لكل القنوات" style="flex-shrink:0"><i class="fas fa-screwdriver-wrench"></i></button>
             <button class="btn btn-ghost btn-xs" onclick="openTransferModal()" title="نقل البيانات بين الأجهزة" style="flex-shrink:0"><i class="fas fa-share-nodes"></i></button>
             <button class="btn btn-fire btn-xs" onclick="openQuickSend()" title="إرسال رسالة مباشرة" style="flex-shrink:0"><i class="fas fa-paper-plane"></i></button>
@@ -3066,8 +3065,24 @@ function renderBotList() {
         html += '</div>';
     }
     box.innerHTML = html;
+    capBotListHeight();
     updateBulkUI();
 }
+
+// ✅ تثبيت ارتفاع قائمة البوتات على 5 حسابات بالظبط، والباقي يظهر بالسكرول
+function capBotListHeight() {
+    var box = $('botList');
+    var cards = box.querySelectorAll('.bot-card');
+    if (cards.length > 5) {
+        var gap = parseFloat(getComputedStyle(box).rowGap) || 10;
+        var cardH = cards[0].getBoundingClientRect().height;
+        box.style.maxHeight = (cardH * 5 + gap * 4) + 'px';
+    } else {
+        box.style.maxHeight = '';
+    }
+}
+
+window.addEventListener('resize', capBotListHeight);
 
 // ═══════════════════════════════════════
 //  التحديد
@@ -4584,95 +4599,6 @@ function SetupPersistence() {
 function showKeepAliveBadge(show) {
     // تم إزالة الشارة — الدالة فارغة للتوافق
 }
-
-// ═══════════════════════════════════════
-//  ✅ نافذة عائمة (Picture-in-Picture) — أبعاد عريضة
-// ═══════════════════════════════════════
-var _pipWindow = null;
-var _pipHomeEl = null; // العنصر الأصلي (ph-main) قبل نقله للنافذة العائمة
-
-function isPiPSupported() {
-    return typeof window.documentPictureInPicture !== 'undefined';
-}
-
-// ✅ الدوال المطلوبة داخل ph-main (ثابتة + المولّدة ديناميكياً) — بنعرّضها على النافذة العائمة
-// عشان خصائص onclick="..." المكتوبة في الـ HTML تلاقيها متاحة كمتغيرات عامة هناك،
-// مع بقاء تنفيذها الفعلي مرتبط بنفس الحالة والمستندات الأصلية (document/accounts) لأنها نفس دوال الإغلاق (closures).
-var _PIP_EXPOSED_FNS = [
-    'openUnifiedSettings','openTransferModal','openQuickSend','toggleSendToNonLive',
-    'startSelectedBots','stopAllBots','selectAllBots','clearSelection','goAddToken',
-    'toggleSelect','openRenewToken','openSettings','removeBot','openPiPWindow'
-];
-
-async function openPiPWindow() {
-    if (!isPiPSupported()) {
-        toast('المتصفح الحالي لا يدعم النافذة العائمة', 'e');
-        return;
-    }
-    if (_pipWindow && !_pipWindow.closed) { try { _pipWindow.focus(); } catch(e) {} return; }
-
-    var mainPhase = $('ph-main');
-    if (!mainPhase) return;
-
-    try {
-        _pipWindow = await window.documentPictureInPicture.requestWindow({
-            width: 560,
-            height: 315
-        });
-    } catch (e) {
-        toast('تعذر فتح النافذة العائمة', 'e');
-        return;
-    }
-
-    // ✅ نسخ كل أنماط CSS الحالية للنافذة العائمة عشان الشكل يفضل زي ما هو
-    Array.prototype.forEach.call(document.styleSheets, function(styleSheet) {
-        try {
-            var cssText = Array.prototype.map.call(styleSheet.cssRules, function(rule){ return rule.cssText; }).join('\n');
-            var style = _pipWindow.document.createElement('style');
-            style.textContent = cssText;
-            _pipWindow.document.head.appendChild(style);
-        } catch (e) {
-            if (styleSheet.href) {
-                var link = _pipWindow.document.createElement('link');
-                link.rel = 'stylesheet';
-                link.href = styleSheet.href;
-                _pipWindow.document.head.appendChild(link);
-            }
-        }
-    });
-    _pipWindow.document.documentElement.setAttribute('dir', 'rtl');
-    _pipWindow.document.documentElement.setAttribute('lang', 'ar');
-    _pipWindow.document.body.style.background = 'var(--bg,#05020a)';
-    _pipWindow.document.body.style.margin = '0';
-    _pipWindow.document.body.style.padding = '10px';
-    _pipWindow.document.body.style.overflowY = 'auto';
-
-    // ✅ تعريض الدوال اللازمة على النافذة العائمة عشان أزرار onclick تشتغل بشكل طبيعي
-    for (var i = 0; i < _PIP_EXPOSED_FNS.length; i++) {
-        var fn = window[_PIP_EXPOSED_FNS[i]];
-        if (typeof fn === 'function') _pipWindow[_PIP_EXPOSED_FNS[i]] = fn;
-    }
-
-    _pipHomeEl = mainPhase;
-    _pipWindow.document.body.appendChild(mainPhase);
-
-    _pipWindow.addEventListener('pagehide', function() {
-        // ✅ رجّع الواجهة الرئيسية لمكانها الأصلي في الصفحة عند إغلاق النافذة العائمة
-        var container = document.querySelector('.app-container');
-        if (container && _pipHomeEl) container.appendChild(_pipHomeEl);
-        _pipHomeEl = null;
-        _pipWindow = null;
-    });
-}
-
-// ✅ محاولة فتح النافذة العائمة تلقائياً عند مغادرة الصفحة (تصغير المتصفح / زر Home)
-// ملاحظة: بعض المتصفحات تمنع فتح نافذة جديدة تلقائياً بدون تفاعل مباشر من المستخدم بنفس اللحظة،
-// فهي محاولة أفضل جهد — وزر النافذة العائمة في الأعلى يفتحها يدوياً بشكل مضمون دائماً.
-document.addEventListener('visibilitychange', function() {
-    if (document.visibilityState === 'hidden' && isPiPSupported() && (!_pipWindow || _pipWindow.closed)) {
-        openPiPWindow().catch(function(){});
-    }
-});
 
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && document.activeElement.id === 'inToken' && !e.shiftKey) {
