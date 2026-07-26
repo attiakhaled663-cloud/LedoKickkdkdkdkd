@@ -1100,6 +1100,7 @@
                 <div class="app-name">LedoKick</div>
                 <div class="app-tagline">البوتات</div>
             </div>
+            <button class="btn btn-ghost btn-xs" id="btnOpenPiP" onclick="openPiPWindow()" title="نافذة عائمة (PIP)" style="flex-shrink:0"><i class="fas fa-clone"></i></button>
             <button class="btn btn-ghost btn-xs" onclick="openUnifiedSettings()" title="إعدادات موحدة لكل القنوات" style="flex-shrink:0"><i class="fas fa-screwdriver-wrench"></i></button>
             <button class="btn btn-ghost btn-xs" onclick="openTransferModal()" title="نقل البيانات بين الأجهزة" style="flex-shrink:0"><i class="fas fa-share-nodes"></i></button>
             <button class="btn btn-fire btn-xs" onclick="openQuickSend()" title="إرسال رسالة مباشرة" style="flex-shrink:0"><i class="fas fa-paper-plane"></i></button>
@@ -3076,10 +3077,15 @@ function toggleSelect(id) {
     if (selectedBots[id]) delete selectedBots[id];
     else selectedBots[id] = true;
     playToggleSound(newState);
-    // ✅ لو وضع "التشغيل الجماعي" مفعّل والبوت اتحدد جديد (مش اتشال)، يلتحق بالتشغيل تلقائياً
+    // ✅ لو وضع "التشغيل الجماعي" مفعّل والبوت اتحدد جديد (مش اتشال)، يلتحق بالتشغيل تلقائياً وفوراً
     if (newState && _bulkRunActive) {
         var _joinedBot = findBot(parseInt(id));
         _autoJoinBulkRun(_joinedBot);
+    }
+    // ✅ لو البوت اتشال من التحديد وكان شغّال، يوقف فوراً كأنه ضغط إيقاف له لوحده
+    if (!newState) {
+        var _leftBot = findBot(parseInt(id));
+        _stopSingleBot(_leftBot);
     }
     persist();
     renderBotList();
@@ -3581,13 +3587,26 @@ function _autoJoinBulkRun(bot) {
     }
     if (bot.channels.length === 0 || validChannels === 0) return; // لا توجد قنوات/رسائل صالحة — تجاهل بصمت
 
-    // ✅ لو فيه طابور تشغيل شغال حالياً، ضيفه في آخر الطابور بدل ما يشتغل فوراً (عشان منتفعش على بعض)
-    if (_botStartQueue.length > 0 || _botStartTimer) {
-        _botStartQueue.push(bot);
-    } else {
-        startBotLoop(bot).catch(function(){});
+    // ✅ يشتغل فوراً بدون أي تأخير أو انتظار دوره في طابور التشغيل المتسلسل
+    startBotLoop(bot).catch(function(){});
+    toast('(' + bot.username + ') انضم للتشغيل فوراً', 's');
+}
+
+// ✅ إيقاف بوت واحد فقط (يُستخدم عند إلغاء تحديده أثناء عمله — كأنه إيقاف فردي)
+function _stopSingleBot(bot) {
+    if (!bot || !bot.isSending) return;
+    bot.isSending = false;
+    if (abortControllers[bot.id]) {
+        abortControllers[bot.id].abort();
+        delete abortControllers[bot.id];
     }
-    toast('(' + bot.username + ') انضم للتشغيل تلقائياً', 's');
+    // ✅ احذفه من طابور الانتظار لو كان لسه ما بدأش
+    for (var i = _botStartQueue.length - 1; i >= 0; i--) {
+        if (_botStartQueue[i].id === bot.id) _botStartQueue.splice(i, 1);
+    }
+    forceUIUpdate();
+    saveRunningState();
+    toast('(' + bot.username + ') تم إيقافه', 'i');
 }
 
 function stopAllBots() {
@@ -4565,6 +4584,95 @@ function SetupPersistence() {
 function showKeepAliveBadge(show) {
     // تم إزالة الشارة — الدالة فارغة للتوافق
 }
+
+// ═══════════════════════════════════════
+//  ✅ نافذة عائمة (Picture-in-Picture) — أبعاد عريضة
+// ═══════════════════════════════════════
+var _pipWindow = null;
+var _pipHomeEl = null; // العنصر الأصلي (ph-main) قبل نقله للنافذة العائمة
+
+function isPiPSupported() {
+    return typeof window.documentPictureInPicture !== 'undefined';
+}
+
+// ✅ الدوال المطلوبة داخل ph-main (ثابتة + المولّدة ديناميكياً) — بنعرّضها على النافذة العائمة
+// عشان خصائص onclick="..." المكتوبة في الـ HTML تلاقيها متاحة كمتغيرات عامة هناك،
+// مع بقاء تنفيذها الفعلي مرتبط بنفس الحالة والمستندات الأصلية (document/accounts) لأنها نفس دوال الإغلاق (closures).
+var _PIP_EXPOSED_FNS = [
+    'openUnifiedSettings','openTransferModal','openQuickSend','toggleSendToNonLive',
+    'startSelectedBots','stopAllBots','selectAllBots','clearSelection','goAddToken',
+    'toggleSelect','openRenewToken','openSettings','removeBot','openPiPWindow'
+];
+
+async function openPiPWindow() {
+    if (!isPiPSupported()) {
+        toast('المتصفح الحالي لا يدعم النافذة العائمة', 'e');
+        return;
+    }
+    if (_pipWindow && !_pipWindow.closed) { try { _pipWindow.focus(); } catch(e) {} return; }
+
+    var mainPhase = $('ph-main');
+    if (!mainPhase) return;
+
+    try {
+        _pipWindow = await window.documentPictureInPicture.requestWindow({
+            width: 560,
+            height: 315
+        });
+    } catch (e) {
+        toast('تعذر فتح النافذة العائمة', 'e');
+        return;
+    }
+
+    // ✅ نسخ كل أنماط CSS الحالية للنافذة العائمة عشان الشكل يفضل زي ما هو
+    Array.prototype.forEach.call(document.styleSheets, function(styleSheet) {
+        try {
+            var cssText = Array.prototype.map.call(styleSheet.cssRules, function(rule){ return rule.cssText; }).join('\n');
+            var style = _pipWindow.document.createElement('style');
+            style.textContent = cssText;
+            _pipWindow.document.head.appendChild(style);
+        } catch (e) {
+            if (styleSheet.href) {
+                var link = _pipWindow.document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = styleSheet.href;
+                _pipWindow.document.head.appendChild(link);
+            }
+        }
+    });
+    _pipWindow.document.documentElement.setAttribute('dir', 'rtl');
+    _pipWindow.document.documentElement.setAttribute('lang', 'ar');
+    _pipWindow.document.body.style.background = 'var(--bg,#05020a)';
+    _pipWindow.document.body.style.margin = '0';
+    _pipWindow.document.body.style.padding = '10px';
+    _pipWindow.document.body.style.overflowY = 'auto';
+
+    // ✅ تعريض الدوال اللازمة على النافذة العائمة عشان أزرار onclick تشتغل بشكل طبيعي
+    for (var i = 0; i < _PIP_EXPOSED_FNS.length; i++) {
+        var fn = window[_PIP_EXPOSED_FNS[i]];
+        if (typeof fn === 'function') _pipWindow[_PIP_EXPOSED_FNS[i]] = fn;
+    }
+
+    _pipHomeEl = mainPhase;
+    _pipWindow.document.body.appendChild(mainPhase);
+
+    _pipWindow.addEventListener('pagehide', function() {
+        // ✅ رجّع الواجهة الرئيسية لمكانها الأصلي في الصفحة عند إغلاق النافذة العائمة
+        var container = document.querySelector('.app-container');
+        if (container && _pipHomeEl) container.appendChild(_pipHomeEl);
+        _pipHomeEl = null;
+        _pipWindow = null;
+    });
+}
+
+// ✅ محاولة فتح النافذة العائمة تلقائياً عند مغادرة الصفحة (تصغير المتصفح / زر Home)
+// ملاحظة: بعض المتصفحات تمنع فتح نافذة جديدة تلقائياً بدون تفاعل مباشر من المستخدم بنفس اللحظة،
+// فهي محاولة أفضل جهد — وزر النافذة العائمة في الأعلى يفتحها يدوياً بشكل مضمون دائماً.
+document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden' && isPiPSupported() && (!_pipWindow || _pipWindow.closed)) {
+        openPiPWindow().catch(function(){});
+    }
+});
 
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Enter' && document.activeElement.id === 'inToken' && !e.shiftKey) {
