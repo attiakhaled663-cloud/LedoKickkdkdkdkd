@@ -3076,6 +3076,11 @@ function toggleSelect(id) {
     if (selectedBots[id]) delete selectedBots[id];
     else selectedBots[id] = true;
     playToggleSound(newState);
+    // ✅ لو وضع "التشغيل الجماعي" مفعّل والبوت اتحدد جديد (مش اتشال)، يلتحق بالتشغيل تلقائياً
+    if (newState && _bulkRunActive) {
+        var _joinedBot = findBot(parseInt(id));
+        _autoJoinBulkRun(_joinedBot);
+    }
     persist();
     renderBotList();
 }
@@ -3482,6 +3487,7 @@ function saveChannelSettings() {
 var _botStartQueue = [];          // قائمة البوتات المنتظرة للتشغيل
 var _botStartTimer = null;        // مؤقّت التأخير بين البوتات
 var _forceStopAll = false;        // علم الإيقاف الإجباري
+var _bulkRunActive = false;       // ✅ يصبح true بعد الضغط على "تشغيل المحددة" — أي بوت يتم تحديده بعدها يلتحق بالتشغيل تلقائياً
 
 async function startSelectedBots() {
     var toStart = [];
@@ -3522,6 +3528,7 @@ async function startSelectedBots() {
 
     // ✅ إعادة ضبط حالة الإيقاف الإجباري + بناء قائمة الانتظار
     _forceStopAll = false;
+    _bulkRunActive = true; // ✅ تفعيل وضع "التشغيل الجماعي" — أي تحديد جديد بعد كده يلتحق بالتشغيل تلقائياً
     _botStartQueue = toStart.slice();
     toast('تشغيل ' + toStart.length + ' بوت (كل بوت بعد 3 ثوانٍ)', 's');
 
@@ -3558,9 +3565,35 @@ function _startNextBotInQueue() {
     }
 }
 
+// ✅ عند تحديد بوت جديد أثناء نشاط وضع "التشغيل الجماعي" — يلتحق بالتشغيل فوراً بدون داعي للضغط على تشغيل المحددة تاني
+function _autoJoinBulkRun(bot) {
+    if (!bot || bot.isSending) return; // بوت شغّال بالفعل أو غير موجود — تجاهل
+    var unifiedReady = unifiedSettings.enabled && unifiedSettings.messages && unifiedSettings.messages.trim();
+    var validChannels = 0;
+    if (unifiedReady) {
+        for (var c = 0; c < bot.channels.length; c++) {
+            if (bot.channels[c].enabled !== false) validChannels++;
+        }
+    } else {
+        for (var c = 0; c < bot.channels.length; c++) {
+            if (bot.channels[c].messages && bot.channels[c].messages.trim()) validChannels++;
+        }
+    }
+    if (bot.channels.length === 0 || validChannels === 0) return; // لا توجد قنوات/رسائل صالحة — تجاهل بصمت
+
+    // ✅ لو فيه طابور تشغيل شغال حالياً، ضيفه في آخر الطابور بدل ما يشتغل فوراً (عشان منتفعش على بعض)
+    if (_botStartQueue.length > 0 || _botStartTimer) {
+        _botStartQueue.push(bot);
+    } else {
+        startBotLoop(bot).catch(function(){});
+    }
+    toast('(' + bot.username + ') انضم للتشغيل تلقائياً', 's');
+}
+
 function stopAllBots() {
     // ✅ تفعيل الإيقاف الإجباري — يوقف قائمة الانتظار فوراً
     _forceStopAll = true;
+    _bulkRunActive = false; // ✅ إلغاء وضع "التشغيل الجماعي" حتى لا يشغّل أي تحديد جديد تلقائياً بعد الإيقاف
     _botStartQueue = [];
     // ✅ إلغاء مؤقّت التأخير إن كان يعمل
     if (_botStartTimer) {
