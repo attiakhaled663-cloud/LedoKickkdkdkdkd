@@ -713,7 +713,7 @@
 
             <div class="modal-actions">
                 <button class="btn btn-fire" id="qsSendBtn" onclick="quickSendMessage()" disabled=""><i class="fas fa-paper-plane"></i> إرسال</button>
-                <="btn btn-ghost" onclick="closeQuickSend()"><i class="fas fa-xmark"></i> إلغاء</button>
+                <button class="btn btn-ghost" onclick="closeQuickSend()"><i class="fas fa-xmark"></i> إلغاء</button>
             </div>
             <div style="text-align:center;font-size:10px;color:var(--muted);margin-top:8px">
                 <i class="fas fa-bolt"></i> اضغط الإرسال عدة مرات للسبام — كل ضغطة ترسل الرسالة فوراً
@@ -2224,7 +2224,9 @@ function openQuickSend() {
     $('qsMessage').value = '';
     renderQsBotList();
     updateQsSendButton();
-    renderQsSeparateList();
+    // ✅ لا تنادي renderQsSeparateList هنا لأنها بتحدد كل البوتات تلقائياً (qsSelectedBots)
+    // وده كان بيخلي كل الحسابات تظهر محددة في القائمة العادية بمجرد فتح المودال
+    if (qsSeparateMode) renderQsSeparateList();
     $('quickSendModal').classList.add('open');
 }
 
