@@ -1747,11 +1747,11 @@ function makeChannel(slug) {
         messages: '',           // الرسائل (كل سطر = رسالة)
         interval: 5,            // التأخير بالثواني (ثابت)
         repeat: 1,              // عدد التكرار
-        isInfinite: false,      // تكرار لا نهائي
-        enabled: true,          // ✅ مفعّلة افتراضياً (زر التشغيل/الإطفاء)
+        isInfinite: true,      // تكرار لا نهائي
+        enabled: false,          // ✅ مفعّلة افتراضياً (زر التشغيل/الإطفاء)
         randomDelay: false,     // ✅ التأخير العشوائي
-        delayMin: 3,            // ✅ الحد الأدنى للتأخير العشوائي
-        delayMax: 7,            // ✅ الحد الأقصى للتأخير العشوائي
+        delayMin: 5,            // ✅ الحد الأدنى للتأخير العشوائي
+        delayMax: 60,            // ✅ الحد الأقصى للتأخير العشوائي
         randomMessages: false,  // ✅ الرسائل العشوائية
         chatroomId: null,       // ✅ معرّف الدردشة (يُحفظ عند الإضافة)
         verified: false,        // ✅ تم التحقق من القناة
