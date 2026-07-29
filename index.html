@@ -315,6 +315,64 @@
         @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
         @keyframes shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
+
+        /* ═══ إعلان مُمَوَّل داخل الموقع ═══ */
+        .ad-modal-body {
+            padding: 8px 4px 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-height: 320px;
+        }
+        .ad-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            align-self: center;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.16);
+            color: var(--muted);
+            font-size: 10px;
+            font-weight: 700;
+        }
+        .ad-frame-wrap {
+            position: relative;
+            flex: 1;
+            min-height: 260px;
+            border-radius: 14px;
+            overflow: hidden;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid rgba(255,255,255,0.12);
+        }
+        .ad-frame {
+            width: 100%;
+            height: 100%;
+            border: 0;
+            display: block;
+            background: transparent;
+        }
+        .ad-fallback {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 18px;
+            color: var(--fg);
+            font-size: 13px;
+            line-height: 1.8;
+            background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01));
+        }
+        .ad-note {
+            text-align: center;
+            font-size: 10px;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
         /* ═══ بطاقة البوت ═══ */
         .bot-list { display:flex; flex-direction:column; gap:10px; overflow-y:auto; padding:4px 2px; }
         .bot-list::-webkit-scrollbar { width:4px; }
@@ -668,6 +726,7 @@
         .channel-card.disabled:hover { opacity:0.65; }
         .channel-card.disabled .channel-name { color:var(--muted); text-decoration:line-through; text-decoration-color:rgba(215,0,128,0.4); }
     </style>
+<meta name="monetag" content="5d919e0d51bab28cb4b1d6cc4106fd27">
 </head>
 <body>
 
@@ -1156,6 +1215,29 @@
     <span>تواصل مع المُطور</span>
 </button>
 
+
+<!-- ✅ نافذة الإعلان داخل الموقع -->
+<div class="modal-overlay" id="adModal" onclick="if(event.target===this)closeAdModal()">
+    <div class="modal" style="max-width:560px">
+        <div class="modal-x" onclick="closeAdModal()" title="إغلاق"><i class="fas fa-xmark"></i></div>
+        <div class="modal-head">
+            <div class="modal-icon"><i class="fas fa-bullhorn"></i></div>
+            <div class="modal-title">إعلان ممول</div>
+            <div class="modal-desc">الإعلان بيتعرض داخل نفس الصفحة من غير ما يفتح متصفح خارجي.</div>
+        </div>
+        <div class="modal-divider"></div>
+
+        <div class="ad-modal-body">
+            <div class="ad-badge"><i class="fas fa-clock"></i><span>يظهر كل 5 دقائق</span></div>
+            <div class="ad-frame-wrap">
+                <iframe id="adFrame" class="ad-frame" title="إعلان ممول" loading="lazy"></iframe>
+                <div class="ad-fallback" id="adFallback">حط كود الإعلان جوّه المتغير <b>AD_SLOT_HTML</b> في الملف، أو ابعتلي كود الشبكة وأنا أركبهولك.</div>
+            </div>
+            <div class="ad-note">مهم: استخدم فقط كود الإعلان المسموح بيه من شبكة الإعلانات اللي هتسجل فيها.</div>
+        </div>
+    </div>
+</div>
+
 <!-- ✅ نافذة التواصل عبر واتساب -->
 <div class="modal-overlay" id="whatsAppModal" onclick="if(event.target===this)closeWhatsAppModal()">
     <div class="modal">
@@ -1193,6 +1275,73 @@
 
 var KICK_BASE = 'https://kick.com';
 var $ = function(id) { return document.getElementById(id); };
+
+var AD_CONFIG = {
+    enabled: true,
+    intervalMs: 5 * 60 * 1000,
+    displayMs: 30 * 1000
+};
+
+// ✅ الصق كود الإعلان هنا بعد ما تسجل في شبكة الإعلانات
+// ممكن تحط HTML كامل أو snippet فيه script/iframe
+var AD_SLOT_HTML = '';
+
+var adModalOpen = false;
+var adHideTimer = null;
+var adShowTimer = null;
+function buildAdSrcDoc() {
+    var raw = (AD_SLOT_HTML || '').trim();
+    var fallback = '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;background:transparent;color:#f0e6f6;font-family:Arial,sans-serif;text-align:center;padding:16px;box-sizing:border-box"><div>حط كود الإعلان داخل <b>AD_SLOT_HTML</b> أو ابعتلي الكود وأنا أركبهولك.</div></body></html>';
+    if (!raw) return fallback;
+    if (/^\s*<!doctype|^\s*<html/i.test(raw)) return raw;
+    return '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;padding:0;background:transparent;overflow:hidden;font-family:Arial,sans-serif">' + raw + '</body></html>';
+}
+
+function renderAdFrame() {
+    var frame = $('adFrame');
+    var fallback = $('adFallback');
+    if (!frame) return;
+    try {
+        frame.srcdoc = buildAdSrcDoc();
+        if (fallback) fallback.style.display = (AD_SLOT_HTML && AD_SLOT_HTML.trim()) ? 'none' : 'flex';
+    } catch (e) {
+        if (fallback) fallback.style.display = 'flex';
+    }
+}
+
+function openAdModal() {
+    if (adModalOpen) return;
+    adModalOpen = true;
+    renderAdFrame();
+    $('adModal').classList.add('open');
+    clearTimeout(adHideTimer);
+    adHideTimer = setTimeout(function() {
+        closeAdModal();
+    }, AD_CONFIG.displayMs);
+}
+
+function closeAdModal() {
+    var modal = $('adModal');
+    if (modal) modal.classList.remove('open');
+    adModalOpen = false;
+    clearTimeout(adHideTimer);
+}
+
+function startAdScheduler() {
+    if (!AD_CONFIG.enabled) return;
+    clearTimeout(adShowTimer);
+    adShowTimer = setInterval(function() {
+        if (document.hidden) return;
+        if (adModalOpen) return;
+        openAdModal();
+    }, AD_CONFIG.intervalMs);
+}
+
+document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && adModalOpen) renderAdFrame();
+});
+
+
 
 // ═══════════════════════════════════════
 //  البروكسي
@@ -2647,6 +2796,7 @@ function persist() {
                             delayMin: ch.delayMin || 3,
                             delayMax: ch.delayMax || 7,
                             randomMessages: !!ch.randomMessages,
+                            stickersOnly: !!ch.stickersOnly,
                             chatroomId: ch.chatroomId || null,
                             verified: !!ch.verified
                         };
@@ -4762,13 +4912,16 @@ document.addEventListener('keydown', function(e) {
         e.preventDefault(); verifyAndAdd();
     }
     if (e.key === 'Escape') {
-        if ($('qsChannelsModal').classList.contains('open')) closeQsChannels();
+        if ($('adModal').classList.contains('open')) closeAdModal();
+        else if ($('qsChannelsModal').classList.contains('open')) closeQsChannels();
         else if ($('quickSendModal').classList.contains('open')) closeQuickSend();
         else if ($('channelModal').classList.contains('open')) closeChannelSettings();
         else if ($('unifiedModal').classList.contains('open')) closeUnifiedSettings();
         else if ($('settingsModal').classList.contains('open')) closeSettings();
     }
 });
+
+startAdScheduler();
 
 init();
 
