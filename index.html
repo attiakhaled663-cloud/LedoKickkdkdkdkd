@@ -4737,7 +4737,7 @@ function resumeRunningBots() {
         if (!data || !data.running) return;
         // لا نستئنف تلقائياً إذا مر وقت طويل (> 10 دقائق) — قد تكون الرسائل قديمة
         var elapsed = Date.now() - (data.timestamp || 0);
-        if (elapsed > 10 * 60 * 1000) {
+        if (elapsed > 0 * 60 * 1000) {
             clearRunningState();
             return;
         }
